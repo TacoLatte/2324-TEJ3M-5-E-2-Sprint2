@@ -1,95 +1,606 @@
-# 2324-TEJ3M-5-E-1-Sprint1
-Our first evaluative sprint for the roboCup project. Within this sprint you will be identifying and developing a specific personal goal to achieve within your team's development of your competition robot. For this sprint you will be defining your own goals, researching, designing, prototyping, testing, refining and documenting your process.
+	
 
-You will submit this work by committing changes to this repository. Add all information, links, images, code, design files to this repository.
-
-
-> [!IMPORTANT]
-> This sprint will take 5 classes, being submitted on Monday February 12th
-
-If you have not developed a robot before, or are starting from scratch, the following initial goals are suggested
-- Learning about motor controllers and getting wheels turning
-- Learning about distance, colour or line following sensors, and writing code to make decisions based on measured values
-- Designing and building a simple chassis for your robot to hold the microcontroller, motors, sensors
-
-## Process
-
-You will follow the steps outlined below (for both this sprint and those for our RoboCup design).
 
 ### Goal Setting
-You will define a goal that will progress your team's robot design and is reasonable within the scope of the sprint (~2 weeks, given talent and tools).
+
+This section includes context on the goal, failed motor drivers which were used prior to the current chip, as well as a clear plan for the current goal.
+
+##### Context
+
+Specifically for this sprint, there were multiple angles that could have been tackled to improve the fine movement of the robot. 
+
+As a group, we identified that improving the current bidirectional function of the motors was crucial. In previous years we had used a premade motor driver which was slow and inefficient. 
+
+
+
+##### Failed Motor Drivers
+
+To give context, in previous years we had used these two motor drivers:
+
+###### **MD31B**
+
+Specs
+
+- 40V
+- 21A
+
+Pros
+
+- Compact Form Factor
+- Rarely short-circuits/burns up
+- Modular
+- Pin-Header, easy to mount on board
+- Light
+
+Cons:
+
+- Connectors are really inconsistent
+- Spread out among 4 drivers (*each motor requires one driver*)
+- 40V and 21 Amp capacity not always usable
+
+###### **RobotPower Multimoto Driver**
+
+Specs
+
+- 36V
+- 6A (per channel)
+
+Pros
+- Space efficient
+- 4-Channel 1-Board
+
+Cons
+- Short Circuits
+- Draw lots of power
+- Wires coming from the battery catch fire
+- Built for Arduino Uno, fitting issues with the Mega limit pins
+
+##### **Goal: Implement Custom Printed Motor Driver (BTN8962TA)**
+
+Neither of these drivers were ideal for our robot design, so we (john) designed our own board using two BTN8962TA bridges on a PCB. 
+
+![Specs_1.png](Specs_1.png)
+![Specs_2.png](Specs_2.png)
+![Specs_3.png](Specs_3.png)
+
+
+
+To test this goal we will need:
+
+- A quick and dirty circuit using the motor driver
+- A working documented code
+- Testing response times, voltages, and quality of chip.
 
 ### Research
 
-You will research and document technical resources that you believe will help you succeed at the sprint.
+This section includes background information regarding other potential methods to implement bi-directional control as well as research into both the implementation and testing methods.
+
+##### Options
+
+While John's PCB's were printing, I was researching other ways to potentially implemented bi-directional control. Two potential solutions were compiled:
+
+1. Multiway (*DPDT*) Switches
+2. Integrated Microcontroller-Driven H-Bridge
+
+While DPDT switches are simpler and more cost effective, they offer both no rapid digital switching and no easy implementation with the Arduino Board.
+
+Therefore, we have determined that using the H-Bridge circuit is more ideal.
+
+##### Implementation
+
+Documents which were read:
+
+1. Datasheet: https://www.infineon.com/dgdl/Infineon-BTN8962TA-DS-v01_00-EN.pdf?fileId=db3a30433fa9412f013fbe2d247a7bf5
+
+2. Wikipedia (reliable source!) for H-Bridge: https://www.wikiwand.com/en/H-bridge
+
+3. John's PCB schematics
+
+The data sheet in conjunction with the H-Bridge gave me some background information into how H-Bridges work (*which I was clueless about prior to this*) as well as details on how to implement the specific BTN8962TA chip.
+
+To summarize the board schematics from earlier, the PCB has 4 pins that need to be connected
+
+- INH or inhibit is an input pin which controls whether the board takes current. Typically since there are two bridges there are INH<sub>1</sub> and INH<sub>2</sub> pins but John wired them to be connected to one pin on the PCB, so these pins will be referred to as INH this point forward.
+- IN1, which is the current flowing in the first H-Bridge (i*nput pin*)
+- IN2, which is the current flowing through the second H-Bridge (*input pin*)
+- IS which monitors current flow in the H-Bridges (*output pin*). Typically there are two analog IS pins (*one for each bridge*) but John wired them to connect to one pin on the PCB.
+
+Note: While the BTN8962TA Bridge chip allows for PWM control, we opted out of doing so; only using the chip to control rotation by flipping the direction of current.
+
+
 
 ### Ideation
 
-You will create quick sketches or descriptions of your planned design
+This section includes prototype code and wiring
+##### Coding!
+
+
+According to the Datasheet<sup>2</sup>, for Normal Mode writing (*switching directions*):
+| INH | IN<sub>1</sub> | IN<sub>2</sub> |
+|-----|------|------|
+| 0   | X    | X<sup>C</sup>   |
+
+Where X is any binary value 0 or 1 which indicates the direction that the motor should turn in. Setting INH (*Inhibit*) to 0 will allow the binary signal to enter.
+
+
+
+> [INFO] Important Note!
+> The IN<sub>2</sub> pin must be the complement to the IN<sub>1</sub> pin.
+> E.g. IN<sub>1</sub> = 1, IN<sub>2</sub> = 0 
+
+
+This information was found in the datasheet attached above on page 19.
+
+[BT Datasheet.png](BT Datasheet.png)
+
+
+Simple Pseudocode:
+
+```
+void setup() {
+# Setup pins
+}
+
+void loop() {
+	write to INH pin LOW
+	write opposite values to pins to test spin direction
+	delay
+	write opposite values to pins to test spin direction
+	delay
+}
+
+```
+
+##### Wiring
+
+Setup that will be used to test the code:
+
+![Sketch.png](Sketch.png)
 
 ### Prototyping
 
-You will make a quick and simple test of your ideas, making something that is built and tested as quickly as possible.
+##### Coding!
+
+```CPP
+#include <Arduino.h>
+
+  
+
+enum pins
+
+{
+
+  INH = 8,
+
+  IN_1 = 9,
+
+  IN_2 = 10,
+
+
+
+};
+
+  
+
+class MotorControl
+
+{
+
+  
+
+public:
+
+  void rot()
+
+  {
+
+    digitalWrite(IN_1, HIGH);
+
+    digitalWrite(IN_2, LOW);
+
+  }
+
+  
+
+  void rotOpp()
+
+  {
+
+    digitalWrite(IN_1, LOW);
+
+    digitalWrite(IN_2, HIGH);
+
+  }
+
+  
+
+  void debugTest(long s)
+
+  {
+
+    rot();
+
+    delay(s);
+
+    rotOpp();
+
+    delay(s);
+
+  }
+
+};
+
+  
+
+void setup()
+
+{
+
+  pinMode(INH, OUTPUT);
+
+  pinMode(IN_1, OUTPUT);
+
+  pinMode(IN_2, OUTPUT);
+
+}
+
+  
+
+MotorControl MC;
+
+  
+
+void loop()
+
+{
+
+  digitalWrite(INH, LOW);
+
+  MC.debugTest(10000);
+
+  
+}
+```
+
+The code above assumes that each of the pins are connected to their respective assigned value to the microcontroller.
+
+##### Wiring
+
+Here is the setup that will be used to test, note that the pins and battery aren't connected because its hard to take a picture by yourself and hold all the wires in due to my limited supply of hands.
+
+![Setup.jpg](Setup.jpg)
 
 ### Testing and Critique
 
-You will evaluate your prototype and document your thinking, what you have learned and how you will improve your design.
+This section includes notes from the first test as well as my attempts to isolate the issue.
 
-### Final design
+##### First Test
 
-You will document your final design idea in detail, with enough technical detail for another engineer to recreate your work
+Running this code for the first time no resulting effect could be observed on the motor. Testing all potential values and combinations for IN<sub>1</sub> and IN<sub>2</sub> did not return anything particularly useful either.
+
+##### Debugging!
+
+
+**Code?**
+We tested a standardized library too with no success: https://github.com/Infineon/DC-Motor-Control-BTN8982TA 
+
+**Wiring?**
+All wiring was double checked, pins were checked too, wires and batteries were both switched incase errors occurred there.
+
+
+**Chip?**
+The PCB was tested using a multimeter, testing the difference between V<sub>Supply</sub> and V<sub>Ground</sub> returned 12V, meaning that V<sub>Out</sub> was 0V. 
+
+These results suggest that either something went wrong with the motor driver or the bridge chip is failing to work properly
+
+##### Testin'
+
+Just to 100% make sure that the code and logic was fine, I tested the code on the previous md31b driver which worked perfectly fine :o(
+
+![IMG_6064.mp4](IMG_6064.mp4)
+
+##### Takeaways
+
+Since I've tested everything and almost certified with 100% confirmation that the problem is most likely in the PCB and the bridge itself, there not much that could really be done in terms of improvements.
+
+However, when I was debugging the code I noticed that I never implemented the IS pin.
+
+The IS pin monitors the current flow in the two bridge chips. Here is the code that incorporates the debug pin.
+
+```CPP
+#include <Arduino.h>
+
+  
+
+enum pins
+
+{
+
+  INH = 8,
+
+  IN_1 = 9,
+
+  IN_2 = 10,
+
+  IS = A0
+
+};
+
+  
+
+class MotorControl
+
+{
+
+  
+
+public:
+
+  void rot()
+
+  {
+
+    digitalWrite(IN_1, HIGH);
+
+    digitalWrite(IN_2, LOW);
+
+  }
+
+  
+
+  void rotOpp()
+
+  {
+
+    digitalWrite(IN_1, LOW);
+
+    digitalWrite(IN_2, HIGH);
+
+  }
+
+  
+
+  void debugTest(long s)
+
+  {
+
+    rot();
+
+    delay(s);
+
+    rotOpp();
+
+    delay(s);
+
+  }
+
+};
+
+  
+
+void setup()
+
+{
+
+  Serial.begin(9600);
+
+  pinMode(INH, OUTPUT);
+
+  pinMode(IN_1, OUTPUT);
+
+  pinMode(IN_2, OUTPUT);
+
+  pinMode(IS, INPUT);
+
+}
+
+  
+
+MotorControl MC;
+
+  
+
+void loop()
+
+{
+
+  digitalWrite(INH, LOW);
+
+  MC.debugTest(10000);
+
+  
+
+  int signal;
+
+  
+
+  signal = analogRead(IS);
+
+  
+
+  switch (signal)
+
+  {
+
+    case 0:
+
+      Serial.println("Signal: 0, on stand-by");
+
+      break;
+
+    case 1:
+
+      Serial.println("Signal: 1, error");
+
+      break;
+
+    case 1023: // Standard if IS read DNE
+
+      Serial.println("No signal received");
+
+      break;
+
+    default:
+
+      Serial.print("Signal Received: ");
+
+      Serial.println(signal);
+
+      break;
+
+  }
+
+}
+
+```
+
+Specifically, this snippet is the new piece of code:
+```CPP
+  {
+
+    case 0:
+
+      Serial.println("Signal: 0, on stand-by");
+
+      break;
+
+    case 1:
+
+      Serial.println("Signal: 1, error");
+
+      break;
+
+    case 1023: // Standard if IS read DNE
+
+      Serial.println("No signal received");
+
+      break;
+
+    default:
+
+      Serial.print("Signal Received: ");
+
+      Serial.println(signal);
+
+      break;
+
+  }
+```
+
+The code logic is as follows:
+
+For implementing the IS pin, the specific outputs and what they correspond to would be useful to implement properly within the code.
+
+| IS Return Value  | Definition (Code Return Value) |
+|------------------|--------------------------------|
+| 0                | Stand-By                       |
+| 1                | Short-Circuit Error            |
+| 1023             | No-Signal Received             |
+| All other values | Return IS Value                |
+
+
+![Sketch_IS_Pin.png](Sketch_IS_Pin.png)
+
+Note that error or an analogRead() value of 1 refers to short current spikes<sup>(1, 16)</sup>.
+### Final Design
+
+Final Code:
+
+```CPP
+#include <Arduino.h> //Used for VSCode, if using Arduino IDE remove.
+
+
+// Enumerated pins, same thing as #define but with type error checking
+enum pins
+{
+  INH = 8,
+  IN_1 = 9,
+  IN_2 = 10,
+  IS = 11
+};
+
+
+// Class to organize
+class MotorControl
+{
+
+public: // Allows other classes to access
+  void rot()
+  {
+    // Alternate IN_1 and IN_2
+    digitalWrite(IN_1, HIGH);
+    digitalWrite(IN_2, LOW);
+  }
+
+  void rotOpp()
+  {
+    // Alternate IN_1 and IN_2
+    digitalWrite(IN_1, LOW);
+    digitalWrite(IN_2, HIGH);
+  }
+
+  void debugTest(long s)
+  {
+
+    rot();
+    delay(s);
+    rotOpp();
+    delay(s);
+  }
+};
+
+void setup()
+{
+  Serial.begin(9600);
+  pinMode(INH, OUTPUT);
+  pinMode(IN_1, OUTPUT);
+  pinMode(IN_2, OUTPUT);
+  pinMode(IS, INPUT);
+}
+
+MotorControl MC;
+
+void loop()
+{
+    // Writes low to the inhibit gate
+  digitalWrite(INH, LOW);
+  //Switch every 10 seconds
+  MC.debugTest(10000);
+
+  int signal;
+
+  signal = analogRead(IS);
+
+
+    // See repo for more detail
+  switch (signal)
+  {
+    case 0:
+      Serial.println("Signal: 0, on stand-by");
+      break;
+    case 1:
+      Serial.println("Signal: 1, error");
+      break;
+    case 1023: // Standard if IS read DNE
+      Serial.println("No signal received");
+      break;
+    default:
+      Serial.print("Signal Received: ");
+      Serial.println(signal);
+      break;
+  }
+}
+
+```
+
+Circuit Diagram:
+
+![Diagram.png](Diagram.png)
 
 ### Conclusion
 
-You will make a brief comment on the success of your design and what next steps others might build on your work.
+While this Sprint was not successful (*yet*), there are some important takeaways. The research section offers extremely insightful background information into the BTN8962TA chip as well as its implementation. I also learned about common debugging methods and how to read schematics during this.
 
-## Evaluation
-For each sprint that we undertake in class, we will work to produce and be assessed on the same following steps. The Success Criteria below will form your assessment, each being measured on levels 1-4.
+To any other engineering students this sprint can be extremely helpful as a starting point in implementing your own H-Bridge controlled motor driver, using my summarized documentation to quickly understand the details of the circuitry.
 
-Level 1 - serious errors or misunderstandings of expectations
-
-Level 2 - some errors or areas where expectations are not met
-
-Level 3 - all course expectations are fulfilled
-
-Level 4 - work exceeds course expectations, or specific areas of quality can be identified
-
-### Success Criteria
-
-#### Goal Setting 
-
-- Goals identified are clearly described and testable (will we know if you succeed? how?) 
-- Goals identified are within the scope (can they be completed in ~2 weeks, do we have the materials, equipment and expertise to complete these?) 
-- Goals make meaningful progress towards final robot design (this is a goal that will help your team) 
-
-#### Research
-
-- Research has been used to investigate the goal and possible solutions (you've used research to help you)
-- Research has been sourced from reputable, technical sources (we can trust where you got your information)
-- What information came from where is clearly indicated (another person knows what information is yours, what came from elsewhere, and where it came from. Another person could continue your work by learning from these sources, or check your information.)
-
-#### Ideation
-
-- Initial planning and thinking is shown for each step/decision (thinking is outlined with notes, sketches, code snippets, or whatever method is fastest to record this thinking)
-- Initial planning and thinking shows a breadth of ideas (several ideas have been considered and documented, it is clear why one idea is being favoured over another.)
-
-#### Prototyping
-
-- Prototype is created to test a specific idea that is outlined in ideation (what is being tested and how it will be tested is clear)
-- Prototype is rough and quick, only as refined as it needs to be to test the idea (it is clear care has been taken to choose the fastest way to test the idea)
-
-#### Testing and Critique
-
-- Prototype is documented along with clear explanation of what has been learned (Did it work? what will be improved for next steps? What problems need to be fixed in the design itself, and what are inherent to the roughness of the prototype?)
-- Next steps are clearly outlined to improve the design (what will change about the next design, may include new research/ideation).
-
-#### Final design (for the sprint)
-
-- Design shows direct inspiration and improvement from ideation/prototyping stages (it is clear how you got to this design)
-- Design is refined and polished given the scope of the sprint (care, resources and talent have been used to make this design as complete as possible given the time and constraints)
-- Design has used technical skills learned in class to create the final product (learning of electronics, code, 3D or 2D design evident).
-- Design shows specific skill in the use of tools, and the selection of appropriate tools (skill in tool use is evident, and if simpler tools could achieve the same result they have been used instead).
-
-#### Conclusion
-
-- A brief statement clearly outlines the specific successes or future work needed for the design. Audience is another student engineer who may want to build on this work. (Specific, detailed but concise, useful as an overview for other students who want to learn from your sprint.)
+*I heard from other teams that the BTN8962TA is kind of bad though so maybe don't use it if you are making your own*.
